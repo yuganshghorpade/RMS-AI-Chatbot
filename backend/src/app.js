@@ -20,6 +20,8 @@ app.use(express.static("public"))
 app.use(cookieParser());
 
 // Upload routes
+app.use('/api/v1/upload', uploadRoutes);
+// Alias for file routes used by frontend
 app.use('/api/v1/file', uploadRoutes);
 
 export default app;

@@ -50,7 +50,7 @@ export function buildPrompt(userQuery, filePath) {
 
   // Create prompt
   const prompt = `
-You are a data query assistant. 
+You are a data query assistant.
 The dataset has the following columns and types:
 ${columns.map(c => `- ${c.name} (${c.type})`).join("\n")}
 
@@ -59,8 +59,12 @@ ${JSON.stringify(sampleData, null, 2)}
 
 The user has asked: "${userQuery}"
 
-Write Python code using Pandas to answer the question, assuming the dataset is loaded in a DataFrame named 'df'.
-Only output the Python code without explanations.
+Write Python code using pandas to answer the question, assuming the dataset is already loaded in a DataFrame named 'df'.
+Assumptions and constraints:
+- Column names are trimmed but may vary in case; use exact names shown above after trimming.
+- When comparing text, use .astype(str).str.strip() to avoid whitespace issues.
+- Do not include any explanations or markdown fences, output only valid Python code.
+- Your code MUST end with a single print(...) of the final answer so it appears on stdout.
   `.trim();
 
   return prompt;

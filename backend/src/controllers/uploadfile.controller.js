@@ -1,8 +1,12 @@
 import XLSX from 'xlsx';
 import fs from 'fs';
 import path from 'path';
+import { spawn } from 'child_process';
 import { ApiResponse } from '../utils/api-response.util.js';
 import { ApiError } from '../utils/api-error.util.js';
+import { extractExcelSchema, saveSchemaAlongsideFile } from '../utils/schema.util.js';
+import { buildPrompt } from '../utils/promptgenerator.util.js';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export const uploadExcelFile = async (req, res, next) => {
   try {
@@ -32,6 +36,10 @@ export const uploadExcelFile = async (req, res, next) => {
       throw new ApiError(400, "Invalid Excel file. The file may be corrupted.");
     }
 
+    // Extract schema and save next to file
+    const schema = extractExcelSchema(file.path);
+    const schemaPath = saveSchemaAlongsideFile(file.path, schema);
+
     // Get sheet names
     const sheetNames = workbook.SheetNames;
     
@@ -42,6 +50,7 @@ export const uploadExcelFile = async (req, res, next) => {
       size: file.size,
       path: file.path,
       sheetNames: sheetNames,
+      schemaPath,
       uploadDate: new Date().toISOString()
     };
 
@@ -54,7 +63,7 @@ export const uploadExcelFile = async (req, res, next) => {
     }
 
     return res.status(200).json(
-      new ApiResponse(200, fileInfo, "Excel file uploaded successfully")
+      new ApiResponse(200, { ...fileInfo, schema }, "Excel file uploaded successfully")
     );
 
   } catch (error) {
@@ -84,11 +93,13 @@ export const getUploadedFiles = async (req, res, next) => {
       if (stats.isFile()) {
         const ext = path.extname(filename).toLowerCase();
         if (['.xlsx', '.xls', '.xlsm', '.xltm'].includes(ext)) {
+          const schemaPath = `${filePath}.schema.json`;
           fileList.push({
             filename,
             size: stats.size,
             uploadDate: stats.mtime,
-            path: `/temp/${filename}`
+            path: `/temp/${filename}`,
+            hasSchema: fs.existsSync(schemaPath)
           });
         }
       }
@@ -121,6 +132,12 @@ export const deleteFile = async (req, res, next) => {
     // Delete the file
     fs.unlinkSync(filePath);
 
+    // Delete schema file if exists
+    const schemaPath = `${filePath}.schema.json`;
+    if (fs.existsSync(schemaPath)) {
+      fs.unlinkSync(schemaPath);
+    }
+
     return res.status(200).json(
       new ApiResponse(200, null, "File deleted successfully")
     );
@@ -152,6 +169,157 @@ export const downloadFile = async (req, res, next) => {
     // Send the file
     res.sendFile(filePath);
 
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getSchema = async (req, res, next) => {
+  try {
+    const { filename } = req.params;
+    if (!filename) throw new ApiError(400, 'Filename is required');
+
+    const filePath = path.join(process.cwd(), 'public', 'temp', filename);
+    const schemaPath = `${filePath}.schema.json`;
+
+    if (!fs.existsSync(schemaPath)) {
+      if (!fs.existsSync(filePath)) throw new ApiError(404, 'File not found');
+      // If schema missing but file exists, generate on the fly
+      const schema = extractExcelSchema(filePath);
+      saveSchemaAlongsideFile(filePath, schema);
+      return res.status(200).json(new ApiResponse(200, schema, 'Schema generated'));
+    }
+
+    const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf-8'));
+    return res.status(200).json(new ApiResponse(200, schema, 'Schema retrieved'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const buildPromptFromSchema = async (req, res, next) => {
+  try {
+    const { filename } = req.params;
+    const { query } = req.body;
+
+    if (!filename) throw new ApiError(400, 'Filename is required');
+    if (!query) throw new ApiError(400, 'Query is required');
+
+    const filePath = path.join(process.cwd(), 'public', 'temp', filename);
+    if (!fs.existsSync(filePath)) throw new ApiError(404, 'File not found');
+
+    // Build prompt using existing prompt generator (reads file and builds prompt)
+    const prompt = buildPrompt(query, filePath);
+    return res.status(200).json(new ApiResponse(200, { prompt }, 'Prompt built successfully'));
+  } catch (error) {
+    next(error);
+  }
+};
+
+async function generatePythonWithLLM(promptText) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new ApiError(501, 'GEMINI_API_KEY not set. Configure LLM or provide code manually.');
+  }
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+    const result = await model.generateContent(`Return only Python code. Do not include triple backticks.\n\n${promptText}`);
+
+    const code = result.response.text() || '';
+    if (!code.trim()) throw new Error('Empty code from LLM');
+    return code;
+  } catch (err) {
+    throw new ApiError(500, `LLM generation failed: ${err.message}`);
+  }
+}
+
+function runPythonOnExcel({ excelPath, pythonCode }) {
+  return new Promise((resolve) => {
+    // Build a full script that loads the Excel as df, then runs the LLM code.
+    const script = [
+      'import sys, json',
+      'import pandas as pd',
+      'import warnings',
+      'warnings.simplefilter("ignore")',
+      '',
+      `excel_path = r'''${excelPath}'''`,
+      'try:',
+      '    df = pd.read_excel(excel_path)',
+      'except Exception as e:',
+      '    print(json.dumps({"error":"Failed to load Excel: " + str(e)}))',
+      '    sys.exit(1)',
+      '',
+      '# Basic cleanup: strip column names and provide text utils',
+      'df.columns = [str(c).strip() for c in df.columns]',
+      'def text(x):',
+      '    return x.astype(str).str.strip()',
+      '',
+      '# Ensure output is a string',
+      'def output(x):',
+      '    return str(x)',
+      '',
+      '# Ensure output is a string',
+      '',
+      '# --- BEGIN USER CODE ---',
+      pythonCode,
+      '# --- END USER CODE ---',
+      '',
+      '# Ensure something is printed to stdout to surface a result',
+      'print("")',
+    ].join('\n');
+
+    // Write temp file next to excel
+    const tempDir = path.dirname(excelPath);
+    const tempPy = path.join(tempDir, `run_${Date.now()}.py`);
+    fs.writeFileSync(tempPy, script, 'utf-8');
+
+    // Try invoking Python
+    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+    const child = spawn(pythonCmd, [tempPy], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', d => { stdout += d.toString(); });
+    child.stderr.on('data', d => { stderr += d.toString(); });
+
+    child.on('close', (code) => {
+      try { fs.unlinkSync(tempPy); } catch {}
+      resolve({ code, stdout, stderr });
+    });
+  });
+}
+
+export const executeQuery = async (req, res, next) => {
+  try {
+    const { filename } = req.params;
+    const { query } = req.body;
+
+    if (!filename) throw new ApiError(400, 'Filename is required');
+    if (!query) throw new ApiError(400, 'Query is required');
+
+    const excelPath = path.join(process.cwd(), 'public', 'temp', filename);
+    if (!fs.existsSync(excelPath)) throw new ApiError(404, 'File not found');
+
+    // 1) Build the LLM prompt from Excel schema + query
+    const promptText = buildPrompt(query, excelPath);
+
+    console.log(promptText);
+
+    // 2) Ask LLM for Python code (requires GEMINI_API_KEY)
+    const pythonCode = await generatePythonWithLLM(promptText);
+
+    console.log(pythonCode);
+
+    // 3) Execute Python code with df preloaded from the Excel
+    const result = await runPythonOnExcel({ excelPath, pythonCode });
+
+    return res.status(200).json(new ApiResponse(200, {
+      prompt: promptText,
+      python: pythonCode,
+      run: result,
+    }, 'Executed Python against Excel'));
   } catch (error) {
     next(error);
   }
