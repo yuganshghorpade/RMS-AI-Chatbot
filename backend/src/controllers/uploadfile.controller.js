@@ -227,8 +227,12 @@ async function generatePythonWithLLM(promptText) {
 
     const result = await model.generateContent(`Return only Python code. Do not include triple backticks.\n\n${promptText}`);
 
-    const code = result.response.text() || '';
+    let code = result.response.text() || '';
     if (!code.trim()) throw new Error('Empty code from LLM');
+    
+    // Clean up any markdown formatting that might have slipped through
+    code = code.replace(/^```python\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
+    
     return code;
   } catch (err) {
     throw new ApiError(500, `LLM generation failed: ${err.message}`);
@@ -305,7 +309,7 @@ export const executeQuery = async (req, res, next) => {
     // 1) Build the LLM prompt from Excel schema + query
     const promptText = buildPrompt(query, excelPath);
 
-    console.log(promptText);
+    // console.log(promptText);
 
     // 2) Ask LLM for Python code (requires GEMINI_API_KEY)
     const pythonCode = await generatePythonWithLLM(promptText);
@@ -314,6 +318,8 @@ export const executeQuery = async (req, res, next) => {
 
     // 3) Execute Python code with df preloaded from the Excel
     const result = await runPythonOnExcel({ excelPath, pythonCode });
+
+    console.log(result);
 
     return res.status(200).json(new ApiResponse(200, {
       prompt: promptText,

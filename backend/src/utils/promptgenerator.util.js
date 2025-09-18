@@ -65,6 +65,7 @@ Assumptions and constraints:
 - When comparing text, use .astype(str).str.strip() to avoid whitespace issues.
 - Do not include any explanations or markdown fences, output only valid Python code.
 - Your code MUST end with a single print(...) of the final answer so it appears on stdout.
+- CRITICAL: Do not wrap your code in triple backticks or markdown. Return only raw Python code.
   `.trim();
 
   return prompt;

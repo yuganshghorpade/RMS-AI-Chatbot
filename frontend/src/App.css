@@ -388,6 +388,12 @@ body {
 /* Disabled drag area */
 .drag-drop-area.disabled { opacity: 0.6; pointer-events: none; }
 
+/* Override role and message colors to black */
+.msg .role { color: #000000; }
+.msg.user .content { color: #000000; }
+.msg.system .content { color: #000000; }
+.msg.assistant .content { color: #111827; }
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .app {

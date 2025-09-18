@@ -111,7 +111,7 @@ function App() {
     ]
     
     const allowedExtensions = ['.xlsx', '.xls', '.xlsm', '.xltm']
-    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'))
+    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.') )
     
     if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
       setMessage('Error: Only Excel files (.xlsx, .xls, .xlsm, .xltm) are allowed')
@@ -221,7 +221,9 @@ function App() {
         console.log('Prompt built for LLM:\n', prompt)
         console.log('Generated Python:\n', python)
         console.log('Python execution result:', run)
-        const assistantMsg = { role: 'assistant', content: `Python executed. Exit code: ${run.code}\n\nSTDOUT:\n${run.stdout || '(empty)'}\n\nSTDERR:\n${run.stderr || '(empty)'}` }
+        const onlyStdout = (run.stdout || '').trim()
+        console.log('Only stdout:', onlyStdout)
+        const assistantMsg = { role: 'assistant', content: onlyStdout || '(empty)' }
         setChats(prev => prev.map(c => c.id === chatId ? { ...c, messages: [...c.messages, assistantMsg] } : c))
       } else {
         const errMsg = { role: 'assistant', content: `Error: ${result.message || 'Failed to execute'}` }
@@ -278,67 +280,63 @@ function App() {
             ) : null}
           </header>
 
-          {/* Upload Section (disabled if chat already has a file) */}
-          <section className="upload-section">
-            <h2>Upload Excel File</h2>
-            {currentChat && currentChat.filename ? (
-              <div className="info-banner">File locked to this chat: <strong>{currentChat.filename}</strong></div>
-            ) : null}
-            
-            <div 
-              className={`drag-drop-area ${dragActive ? 'drag-active' : ''} ${currentChat && currentChat.filename ? 'disabled' : ''}`}
-              onDragEnter={handleDrag}
-              onDragLeave={handleDrag}
-              onDragOver={handleDrag}
-              onDrop={handleDrop}
-            >
-              <div className="drag-content">
-                <div className="upload-icon">📁</div>
-                <p>Drag and drop your Excel file here, or click to browse</p>
-                <p className="file-types">Supported formats: .xlsx, .xls, .xlsm, .xltm (Max: 10MB)</p>
-                
-                <input
-                  type="file"
-                  id="fileInput"
-                  accept=".xlsx,.xls,.xlsm,.xltm"
-                  onChange={handleFileSelect}
-                  className="file-input"
-                  disabled={!!(currentChat && currentChat.filename)}
-                />
-                
-                <button 
-                  className="browse-btn"
-                  onClick={() => !currentChat?.filename && document.getElementById('fileInput').click()}
-                  disabled={!!(currentChat && currentChat.filename)}
-                >
-                  Choose File
-                </button>
-              </div>
-            </div>
-
-            {selectedFile && (
-              <div className="file-info">
-                <h3>Selected File:</h3>
-                <div className="file-details">
-                  <p><strong>Name:</strong> {selectedFile.name}</p>
-                  <p><strong>Type:</strong> {selectedFile.type || 'Unknown'}</p>
+          {/* Upload Section: hide entirely once a file is attached */}
+          {!currentChat?.filename && (
+            <section className="upload-section">
+              <h2>Upload Excel File</h2>
+              <div 
+                className={`drag-drop-area ${dragActive ? 'drag-active' : ''}`}
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+              >
+                <div className="drag-content">
+                  <div className="upload-icon">📁</div>
+                  <p>Drag and drop your Excel file here, or click to browse</p>
+                  <p className="file-types">Supported formats: .xlsx, .xls, .xlsm, .xltm (Max: 10MB)</p>
+                  
+                  <input
+                    type="file"
+                    id="fileInput"
+                    accept=".xlsx,.xls,.xlsm,.xltm"
+                    onChange={handleFileSelect}
+                    className="file-input"
+                  />
+                  
+                  <button 
+                    className="browse-btn"
+                    onClick={() => document.getElementById('fileInput').click()}
+                  >
+                    Choose File
+                  </button>
                 </div>
-                <button 
-                  className="upload-btn"
-                  onClick={handleUpload}
-                  disabled={uploading}
-                >
-                  {uploading ? 'Uploading...' : 'Upload File'}
-                </button>
               </div>
-            )}
 
-            {message && (
-              <div className={`message ${message.includes('Error') ? 'error' : 'success'}`}>
-                {message}
-              </div>
-            )}
-          </section>
+              {selectedFile && (
+                <div className="file-info">
+                  <h3>Selected File:</h3>
+                  <div className="file-details">
+                    <p><strong>Name:</strong> {selectedFile.name}</p>
+                    <p><strong>Type:</strong> {selectedFile.type || 'Unknown'}</p>
+                  </div>
+                  <button 
+                    className="upload-btn"
+                    onClick={handleUpload}
+                    disabled={uploading}
+                  >
+                    {uploading ? 'Uploading...' : 'Upload File'}
+                  </button>
+                </div>
+              )}
+
+              {message && (
+                <div className={`message ${message.includes('Error') ? 'error' : 'success'}`}>
+                  {message}
+                </div>
+              )}
+            </section>
+          )}
 
           {/* Chat Section */}
           <section className="chat-section">
