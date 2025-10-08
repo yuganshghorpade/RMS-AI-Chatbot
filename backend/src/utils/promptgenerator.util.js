@@ -63,8 +63,10 @@ Write Python code using pandas to answer the question, assuming the dataset is a
 Assumptions and constraints:
 - Column names are trimmed but may vary in case; use exact names shown above after trimming.
 - When comparing text, use .astype(str).str.strip() to avoid whitespace issues.
+- If the result is tabular (multiple rows/columns), print JSON using df.to_json(orient='records') (or a list of dicts), with ONLY the JSON on stdout.
+- If the result is a single scalar/number/string, print just that scalar via print(...).
 - Do not include any explanations or markdown fences, output only valid Python code.
-- Your code MUST end with a single print(...) of the final answer so it appears on stdout.
+- Your code MUST end with a single print(...) so the answer appears on stdout.
 - CRITICAL: Do not wrap your code in triple backticks or markdown. Return only raw Python code.
   `.trim();
 

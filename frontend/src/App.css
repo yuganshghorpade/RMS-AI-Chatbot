@@ -476,3 +476,10 @@ body {
 .file-chip { margin-top: 12px; display: inline-flex; align-items: center; gap: 8px; background: #edf2f7; border: 1px solid #e2e8f0; border-radius: 999px; padding: 6px 10px; }
 .file-chip .file-name { font-size: 0.9rem; color: #2d3748; }
 .file-chip .chip-action { background: transparent; border: none; cursor: pointer; color: #3182ce; font-weight: 700; }
+
+/* Table rendering for JSON results */
+.table-wrapper { overflow-x: auto; overflow-y: hidden; max-width: 100%; }
+.result-table { border-collapse: collapse; background: #fff; width: max-content; min-width: 100%; }
+.result-table th, .result-table td { border: 1px solid #e2e8f0; padding: 8px 10px; text-align: left; white-space: nowrap; }
+.result-table th { background: #f7fafc; font-weight: 700; position: sticky; top: 0; }
+.result-table tr:nth-child(even) { background: #fafafa; }

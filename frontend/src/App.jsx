@@ -84,10 +84,8 @@ function App() {
   const handleDrag = (e) => {
     e.preventDefault()
     e.stopPropagation()
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setDragActive(true)
-    } else if (e.type === "dragleave") {
-      setDragActive(false)
+    if (e.type === "dragenter" || e.type === "dragleave" || e.type === "dragover") {
+      setDragActive(e.type !== 'dragleave')
     }
   }
 
@@ -194,6 +192,16 @@ function App() {
     }
   }
 
+  const tryParseJson = (text) => {
+    try {
+      const parsed = JSON.parse(text)
+      if (Array.isArray(parsed)) return parsed
+      return null
+    } catch {
+      return null
+    }
+  }
+
   const sendMessage = async () => {
     if (!currentChat || !currentChat.filename) {
       setMessage('Upload an Excel in this chat before asking a question.')
@@ -215,16 +223,16 @@ function App() {
       })
       const result = await response.json()
       if (response.ok) {
-        const prompt = result.data.prompt
-        const python = result.data.python
         const run = result.data.run
-        console.log('Prompt built for LLM:\n', prompt)
-        console.log('Generated Python:\n', python)
-        console.log('Python execution result:', run)
         const onlyStdout = (run.stdout || '').trim()
-        console.log('Only stdout:', onlyStdout)
-        const assistantMsg = { role: 'assistant', content: onlyStdout || '(empty)' }
-        setChats(prev => prev.map(c => c.id === chatId ? { ...c, messages: [...c.messages, assistantMsg] } : c))
+        const maybeJson = tryParseJson(onlyStdout)
+        if (maybeJson) {
+          const assistantMsg = { role: 'assistant', content: maybeJson, isJson: true }
+          setChats(prev => prev.map(c => c.id === chatId ? { ...c, messages: [...c.messages, assistantMsg] } : c))
+        } else {
+          const assistantMsg = { role: 'assistant', content: onlyStdout || '(empty)' }
+          setChats(prev => prev.map(c => c.id === chatId ? { ...c, messages: [...c.messages, assistantMsg] } : c))
+        }
       } else {
         const errMsg = { role: 'assistant', content: `Error: ${result.message || 'Failed to execute'}` }
         setChats(prev => prev.map(c => c.id === chatId ? { ...c, messages: [...c.messages, errMsg] } : c))
@@ -234,6 +242,29 @@ function App() {
       const errMsg = { role: 'assistant', content: `Error: ${error.message}` }
       setChats(prev => prev.map(c => c.id === chatId ? { ...c, messages: [...c.messages, errMsg] } : c))
     }
+  }
+
+  const TableMessage = ({ rows }) => {
+    if (!rows.length) return <div className="content">(empty table)</div>
+    const columns = Object.keys(rows[0] || {})
+    return (
+      <div className="table-wrapper">
+        <table className="result-table">
+          <thead>
+            <tr>
+              {columns.map(c => <th key={c}>{c}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i}>
+                {columns.map(c => <td key={c}>{String(r[c] ?? '')}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
   }
 
   const formatFileSize = (bytes) => {
@@ -345,7 +376,9 @@ function App() {
                 currentChat.messages.map((m, idx) => (
                   <div key={idx} className={`msg ${m.role}`}>
                     <div className="role">{m.role}</div>
-                    <div className="content prewrap">{m.content}</div>
+                    <div className="content prewrap">
+                      {m.isJson ? <TableMessage rows={m.content} /> : m.content}
+                    </div>
                   </div>
                 ))
               ) : (
