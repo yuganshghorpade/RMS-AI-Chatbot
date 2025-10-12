@@ -61,7 +61,7 @@ The user has asked: "${userQuery}"
 
 Write Python code using pandas to answer the question, assuming the dataset is already loaded in a DataFrame named 'df'.
 Assumptions and constraints:
-- Column names are trimmed but may vary in case; use exact names shown above after trimming.
+- Column names shown above should be used exactly as shown (including any spaces).
 - When comparing text, use .astype(str).str.strip() to avoid whitespace issues.
 - If the result is tabular (multiple rows/columns), print JSON using df.to_json(orient='records') (or a list of dicts), with ONLY the JSON on stdout.
 - If the result is a single scalar/number/string, print just that scalar via print(...).
